@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Make Illegal States Unrepresentable</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<link rel='stylesheet' type='text/css' href='style.css' />
+</head>
+<body>
+<textarea id="source">
+
+class: center, middle, transition, intro
+
+# Make Illegal States Unrepresentable
+
+.horizontalCentered.caption[Daniel Beskin]
+
+???
+
+- Hi, so we're here to talk about this great quote by Yaron Minsky
+- Make illegal states unrepresentable
+- Although it sounds simple, its consequence are quite profound
+- But before we begin, let's start with a short story
+
+---
+layout: true
+
+## Prologue
+
+---
+
+- 03:32 in the morning
+
+???
+- It's the middle of the night, and you're sleeping peacfully
+--
+
+- You get a call
+
+???
+
+- Suddenly, you get a call
+
+--
+
+- The production system is crashing
+
+???
+
+- The production system is crashing, you're being told
+- After minutes of furious debugging, you find this
+--
+
+- `NoSuchElementException: None.get`
+
+???
+
+- A no-such element exception, someone unwrapped an empty optional value
+- How can that be? You ask yourself
+- So you dig a little deeper, and you find this code
+
+---
+
+```scala
+def notifyUser(user: User) =
+  if user.registered then
+    // this is SAFE
+    // registered users ALWAYS have an email
+    val email = user.email.get
+    
+    sendToEmail(email)
+```
+
+???
+- Of course, someone unwrapped an empty `Option`
+- You read: "this is SAFE, registered users ALWAYS have an email"
+- What a nice comment, someone even bothered doing it in ALL CAPS
+- But it is a very reasonable assumption, registered **should** have an email
+- It was even an explicit requirement by your product manager
+- What went wrong?
+
+---
+
+- The system entered an illegal state
+- This could be avoided
+
+???
+- We entered an illegal state of the system
+- It doesn't really matter how we got here
+- These sorts of situations can be avoided
+
+---
+
+- The system entered an illegal state
+- This ~~could~~ **must** be avoided
+
+???
+
+- They must be avoided
+
+--
+- Make illegal states unrepresentable
+
+???
+- And that's what we are here to talk about 
+- Making illegal states unrepresentable
+- How to make scenarios like this one impossible
+
+---
+layout: true
+
+## On Today's Menu
+
+---
+
+> Make illegal states unrepresentable
+
+- What it means
+- How to achieve it
+- What's in it for you
+  
+???
+
+- And that's what we'll have today
+- First, we'll discuss what this quote means
+- Then I'll show some techniques that get us closer to this ideal
+- And we'll conclude the benefits you'll reap if you follow this quote
+- This is mostly a beginner-friendly talk, but even if you don't see anything new, I hope that you'll find the perspective I'm about to show here useful
+
+---
+layout: false
+
+class: middle, transition
+
+> One of our programming maxims at Jane Street is to "make illegal states unrepresentable".
+.footnote[[Yaron Minsky on Lambda the Ultimate](http://lambda-the-ultimate.org/node/2216#comment-31690)]
+
+???
+
+- So as far as I know, this quote comes from Yaron Minsky, who coined it in the context of working on a financial system
+- Where I imagine that avoiding illegal states is very important
+- Let's dive in to figure out what it actually means, we'll break the quote down into smaller parts
+---
+
+layout: true
+
+## States
+
+---
+
+???
+- What do we mean when we say a "state"
+- Imagine your whole program running
+- Take a snapshot of a single moment in time
+
+---
+.stateSingle[![](states-state single.drawio.svg)]
+
+???
+- This is such a snapshot
+- Here you have all the variables and memory locations assigned to some values
+- Threads are running, function calls are about to be made
+- This is a single state of our system
+- Of course a real system has many states
+
+---
+.stateMultiple1[![](states-state multiple 1.drawio.svg)]
+
+???
+- With many different values
+
+---
+.stateMultiple2[![](states-state multiple 2.drawio.svg)]
+
+???
+---
+.statePoints[![](states-state points.drawio.svg)]
+
+???
+- For the purposes of this talk, we'll zoom out from the details of registers and threads
+- And just have a conceptual picture of the different states of the system
+- This is our program's state space
+- All the different configuration it can find itself in
+---
+layout: true
+
+## Illegal
+
+---
+.statePoints[![](states-state illegal points 1.drawio.svg)]
+
+???
+- But some of the states of the system are illegal
+- If you find yourself there, bad things can happen
+- Maybe the program will crash, or throw an exception
+- Maybe some business rule will be broken
+- Whatever it is, it's bad for the system, and you want to avoid it
+- Of course, what is considered illegal is a matter of definition and utility, but let's assume that we can recognize an illegal state when we see it
+- Usually, the reality is even worse
+
+---
+.statePoints[![](states-state illegal points 2.drawio.svg)]
+
+???
+- Lots of states that our program can reach are illegal
+- So hitting them, usually by accident, is just a matter of time
+- Before we move on, just thinking about the state space of your program, and what states are legal or illegal, is a good first step towards writing better software
+- Even if you don't do anything else besides that
+- Let's zoom in a little bit
+
+---
+.stateFunction1[![](states-state function 1.drawio.svg)]
+
+???
+- A typical program is usually moving between states all the time
+- Ideally, we are moving between legal states and everything is fine
+- But as I said before, it's just a matter of time until we hit a bad state
+
+---
+.stateFunction2[![](states-state function 2.drawio.svg)]
+
+???
+- And when that happens, you're likely to just move to yet another illegal state
+---
+.stateFunction3[![](states-state function 3.drawio.svg)]
+
+???
+- This is not good, this is something that should be avoided
+- Let's zoom in a little more 
+
+---
+layout: true
+
+## Representable
+
+---
+
+.centered.stateFunctionCode[
+```
+(A, B, C) ⇒ D
+```
+]
+
+???
+- As high-level programmers, we usually don't talk about registers and memory locations
+- And as functional programmers, we strive to express as much of our logic as possible as functions
+- So imagine some part of your system as this function, that has some inputs and some outputs
+- What do I mean by an illegal state being "representable"
+- If there exist some combination of inputs that leads us into an illegal outcome, that means that an illegal state is representable in our system
+- What we want, what we strive to achieve, is to make it impossible to find such inputs that would lead us into an illegal state
+
+---
+
+layout: true
+
+## Un-representable
+
+---
+
+.statePoints[![](states-state illegal points 2.drawio.svg)]
+
+???
+- So imagine, that it's impossible to even write down the code that leads into all those red dots
+
+---
+
+.statePoints[![](states-state points unrepresentable.drawio.svg)]
+
+???
+- If we did that, all those illegal states are unrepresentable in our system
+- All you can do is move around the legal and representable states, without ever worrying that you'll accidentally hit an illegal state
+- This should be possible, not because you checked and double-checked your inputs, and not because you wrote a bunch of tests
+- But because you made it impossible to represent an illegal state in your system
+- Well... at least that's the ideal
+
+---
+
+- An unreachable ideal?
+
+???
+- It's quite possible that this ideal is unreachable in general
+- That may be so, but we can still strive for it
+- And every step we take towards it will make our software better and our nights quieter
+
+--
+
+- Is it worth it?
+
+???
+- There is, of course a certain price to pay for adapting our code towards the exclusion of illegal states
+- But the few techniques we are going to discuss today are quite lightweight
+- And overall improve the code in many ways
+
+--
+
+- Strongly-typed FP is a great fit
+
+???
+- Although it's possible to try to avoid illegal states in pretty much every paradigm and language
+- Strongly-typed functional programming is especially well-suited for it
+- Types make it easier to define and track our states
+- Functional code makes it easier to forbid the illegal states once you recognize them
+
+---
+
+layout: false
+class: middle, transition
+
+> Your scientists were so preoccupied with whether they could, they didn’t stop to think if they should.
+
+.footnote[Dr. Ian Malcolm, Jurassic Park]
+
+???
+- So now that we know what are illegal states, let's find out how to make them unrepresentable
+- But first, a slight digression
+
+---
+
+layout: true
+
+## And Now for Something Completely Different
+
+---
+
+???
+- Although I'm not sure why this is so, I hear that people like coffee
+- But apparently, making coffee is very, very complicated
+
+---
+.coffeeChart[![](coffee-chart.webp)]
+
+.imageCredit[Image from [Pop Chart](https://popchart.co/products/the-compendious-coffee-chart)]
+
+???
+- There's a diagram with lots of states if I ever saw one
+- Since I don't know much about coffee, I thought it would be a nice problem domain to tackle for this talk
+
+---
+
+layout: false
+
+## What Could Possibly Go Wrong?
+
+.coffeeRobot[![](coffee-robot.jpg)]
+
+.imageCredit[Image from [OrionStar](https://en.orionstar.com/coffeemaster.html)]
+
+???
+- So imagine you're tasked with programming a coffee-making robot like this one
+- Lots of things to think about here
+- A huge state-space, lots of things that can go wrong
+- Let's start by ordering some coffee
+
+---
+
+layout: true
+
+## The Coffee Order
+
+---
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+
+???
+- So we start programming our robot, we want a quick proof-of-concept that it works
+- Apparently cappuccino is a very popular drink, so we start with that
+- We start by modeling the process of coffee ordering
+- For the cappuccino the user needs to tell us what kind of milk should be used
+
+--
+
+```
+case class CoffeeOrder(
+  milk: Milk)
+```
+
+???
+- It appears that choosing milk these days is non-trivial, so `Milk` is actually a type with multiple choices
+- After successfully making a cappuccino, you want to expend your repertoire
+
+---
+
+```
+case class CoffeeOrder(
+  milk: Milk)
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+.espresso[![](espresso.png)]
+
+???
+- So might as well make a plain espresso, you already have the tools for it
+- Espresso is just a cappuccino minus the milk
+---
+
+```
+case class CoffeeOrder(
+  milk: Option[Milk])
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+.espresso[![](espresso.png)]
+
+???
+- So milk is now optional in our data type
+- Let's make another one
+
+---
+
+```
+case class CoffeeOrder(
+  milk: Option[Milk])
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+.espresso[![](espresso.png)]
+.latte[![](latte.png)]
+
+???
+- Latte
+- It's just like cappuccino, but more milk
+- So both latte and cappuccino now have milk
+- We can't really tell them apart with our little data-type
+- We'll have to disambiguate them somehow
+
+---
+
+```
+case class CoffeeOrder(
+  milk: Option[Milk],
+  drinkType: DrinkType)
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+.espresso[![](espresso.png)]
+.latte[![](latte.png)]
+
+???
+- Now we have an enum for the different drink-types that we are supporting
+- So it's easy to figure out what drink to prepare when
+
+---
+```
+case class CoffeeOrder(
+  drinkType: DrinkType,
+  milk: Option[Milk])
+  
+enum DrinkType:
+ case Cappuccino,
+      Espresso,
+      Latte
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.cappuccino[![](cappuccino.png)]
+.espresso[![](espresso.png)]
+.latte[![](latte.png)]
+
+???
+- This is a nice way to future-proof ourselves to support future drinks
+- Now that we support some basic drinks, we want to show how fancy our robot is
+
+---
+
+```
+case class CoffeeOrder(
+  drinkType: DrinkType,
+  milk: Option[Milk])
+
+enum DrinkType:
+ case Cappuccino,
+      Espresso,
+      Latte,
+      Affogato,
+      IrishCoffee
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.affogato[![](affogato.png)]
+.irishCoffee[![](irish-coffee.png)]
+
+???
+- Affogato and Irish coffee
+- But those require more ingredients
+
+---
+```
+case class CoffeeOrder(
+  drinkType: DrinkType,
+  milk: Option[Milk],
+  gelato: Option[Gelato],
+  cream: Option[Cream],
+  whiskey: Option[Whiskey])
+                        
+enum DrinkType:
+  case Cappuccino,
+       Espresso,
+       Latte,
+       Affogato,
+       IrishCoffee
+```
+
+.imageCredit[Images from [Follygraph](https://follygraph.pl/38-ways-to-make-a-perfect-coffee)]
+.affogato[![](affogato.png)]
+.irishCoffee[![](irish-coffee.png)]
+
+???
+- Gelato for the affogato and cream with whiskey for the Irish coffee
+- Hmm, this is getting out of hand
+- We support five different drinks, but it's really difficult tell what goes where
+- What combinations of `Option` values here are valid and when?
+- If we take a step back for a moment
+---
+
+.coffeeOrderStates[![](states-coffee order states 1.drawio.svg)]
+
+???
+- Our system is supposed to have only five valid states
+- Each corresponding to a specific drink
+
+---
+
+.coffeeOrderStates[![](states-coffee order states 2.drawio.svg)]
+
+???
+- But instead, the data-type we just created supports other combinations as well
+- Some of them, like espresso with gelato are just redundant
+- Although some coffee fanatics might be offended
+- But others make no sense at all
+- Irish coffee without whiskey is definitely an illegal state if I ever saw one
+- And there are many other illegal combinations here
+
+---
+
+.coffeeOrderStates[![](states-coffee order states 3.drawio.svg)]
+
+???
+- This type we have now is "too big" for the problem we are solving
+- It has too many values that shouldn't be part of our program
+- Let's see more concretely why this is a problem
+
+---
+
+```
+def prepareIrishCoffee(cream: Cream, 
+                       whiskey: Whiskey): IO[Unit]
+```
+
+???
+- Suppose we have some function that tells the robot to prepare the Irish coffee
+- Naturally, it requires the cream and whiskey as arguments
+
+--
+
+```
+def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] = 
+  order.drinkType match 
+    case IrishCoffee =>
+      // This is SAFE
+      // Irish coffee ALWAYS has cream and whiskey
+      prepareIrishCoffee(
+        order.cream.get,
+        order.whiskey.get)
+```
+
+???
+- We want to use that function when preparing the order
+- So in the case where the drink-type is Irish coffee we extract the cream and whiskey `Option`al values and pass them on
+- That's okay, right?
+- I mean, it makes no sense for those values to be empty
+- Maybe, just in case we'll be extra careful and be explicit about how, very, really, impossible this is
+
+---
+
+```
+def prepareIrishCoffee(cream: Cream, 
+                       whiskey: Whiskey): IO[Unit]
+```
+
+```
+def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] = 
+  order.drinkType match 
+    case IrishCoffee =>
+      // This is SAFE
+      // Irish coffee ALWAYS has cream and whiskey
+      if order.cream.isEmpty
+      then throw IllegalStateException("No cream")
+      if order.whiskey.isEmpty
+      then throw IllegalStateException("No whiskey")
+        
+      prepareIrishCoffee(
+        order.cream.get,
+        order.whiskey.get)
+```
+
+???
+- That's a nice comment, maybe it'll be easier to debug late at night
+- But we are just assuming an invariant:
+- That Irish coffee orders always have cream and whiskey
+- But invariants can be broken
+- Maybe you started reading orders from JSON files, and the format got messed up?
+- Who knows
+- You probably can't write tests for every possible flow in the system
+- And even less so for flows that will be defined sometime in the future
+- If you're now thinking that I'm just bad at modelling data, sure
+- But these things don't just happen all at once
+- They start small, and they gradually sneak up on you, and then suddenly they are big
+- And full of illegal states
+- But we can do better, a lot better
+
+---
+layout: true
+## Algebraic Data Types
+
+---
+
+???
+- Algebraic data-types are one of the best tools to help make types "the right size" for the problem
+- So let's rewrite our data-type and exclude the illegal states from it
+---
+```
+enum CoffeeOrder:
+
+  {{content}}
+```
+
+???
+- Instead of stuffing everything at the top-level of `CoffeeOrder`
+- We are going to place everything where it belongs
+--
+case Cappuccino(milk: Milk)
+
+  {{content}}
+  
+???
+- Milk is mandatory for a cappuccino
+--
+case Espresso
+
+  {{content}}
+  
+???
+- Espresso has no requirements
+--
+case Latte(milk: Milk)
+
+  {{content}}
+  
+???
+- Latte requires milk as well
+  
+--
+case Affogato(gelato: Gelato)
+
+  {{content}}
+  
+???
+- Affogato requires gelato
+  
+--
+case IrishCoffee(
+    cream: Cream,
+    whiskey: Whiskey)
+    
+???
+- And, Irish coffee cannot be defined without cream and whiskey
+- Not only that it's now clear what data belongs where and what combinations are legal
+- It's literally impossible to express illegal combinations
+- The illegal states on the previous slide or no longer representable in our code
+
+---
+
+```
+def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] = 
+  order match 
+    case IrishCoffee(cream, whiskey) =>
+      prepareIrishCoffee(cream, whiskey)
+      
+    case ... => ... 
+```
+
+???
+- Now we can safely call `prepareIrishCoffee`
+- We do not need to assume any invariant about the code, or (lying) in a comment about it
+- No exceptions or illegal states here
+- If we got to this point, we know for a fact that we have all the right ingredients for Irish coffee
+- This is enforced by the compiler for every possible flow of our program
+- Now and in the future
+- So we don't even need to write tests about it
+- The illegal state I showed previously is truly unrepresentable
+
+---
+- Reducing your state space
+
+???
+- Algebraic data types are a great tool you can use to reduce the size of your state space
+- Leading to fewer illegal states that you can represent
+
+--
+- Making every assumption explicit
+
+???
+- This is done by making every assumption about your state explicit and encoded by the type
+- So that your values are **correct by construction**
+- That is, the type prevents you from creating incorrect values
+- Once you do that
+
+--
+- Flow as data
+
+???
+- You're basically turning the flow of your code into a piece of data
+- Not only that it's usually easier for us humans to follow data rather than control flow
+- But compilers are typically better at it as well
+- Note how in the previous example we no longer have any conditionals except a top-level match
+- From that point and on the compiler got your back
+- It can help along the way with exhaustivity checking on your pattern matches
+- Making sure that you don't forget to handle everything you need
+- And providing you with safe access to all the data you need in the current state
+- You're free from thinking about the illegal states, or doing any kind of **defensive programming**
+
+--
+- You still have to get the "size" right
+
+???
+- But it's not a magical solution
+- You still have to actually think about your state space and get the "size" of it right
+- It's always possible to create an algebraic data type of the wrong size
+- Our original `CoffeeOrder` was just that, an algebraic data type with the wrong size
+- That's why it allowed us to enter illegal states
+
+--
+- Probably the best cost/benefit ratio in FP
+
+???
+- Overall, I find that of all features of functional programming, algebraic data types probably have the best cost/benefit ratio
+- It might not be obvious from this one simple example
+- But using them **consistently** and all over the place can lead to great improvements to code safety and clarity
+- If I were stuck on a deserted island, or programming in Java (cue laugh)
+- Algebraic data types are the one feature that I will take along with me from functional programming
+- They are that useful
+
+---
+layout: false
+
+## What Could Possibly Go Wrong?
+
+.coffeeRobot[![](coffee-robot.jpg)]
+
+.imageCredit[Image from [OrionStar](https://en.orionstar.com/coffeemaster.html)]
+
+???
+- We are back to our robot now
+- Let's see what else it can do
+- Apparently, coffee drinkers have lots of nitpicks
+- You can't just pour any amount of water on any amount of coffee
+- No, that would be wrong
+
+---
+
+layout: true
+
+## Pouring
+
+---
+```
+def pour(
+  water: Water,
+  grounds: Grounds): IO[Unit]
+```
+
+???
+- Imagine that we have this function to command the robot to pour water over some coffee grounds
+- This function can easily lead us to an illegal state
+- Just choose the wrong ratio of water and grounds
+- And there, you just ruined a perfectly good cup of coffee
+- Instead we can do this
+
+---
+
+```
+def pour(
+  tastyRatio: TastyRatio): IO[Unit]
+```
+
+???
+- We only want to allow a ratio of water and coffee that is tasty
+- Seems that this would be safer
+
+--
+
+```
+case class TastyRatio(
+  water: Water, 
+  grounds: Grounds)
+```
+
+???
+- But not really
+- We just moved the problem into another place
+- You can just as well have invalid instances of `TastyRatio`
+- This is just wishful thinking
+- We claim that this is a tasty-ratio, but nothing is enforcing this invariant
+- An illegal state waiting to happen
+- If an illegal state can be represented in our code, it probably will
+- And there are lots of illegal states here
+---
+
+.coffeePrepStates[![](states-coffee prep states 1.drawio.svg)]
+
+???
+- Most combinations of amounts of water and grounds are going to be illegal
+
+---
+
+.coffeePrepStates[![](states-coffee prep states 2.drawio.svg)]
+
+???
+- With only a small proportion of them being correct ratios
+- What we want to achieve is for us to only be able to write down the correct ratios
+- And make writing all others impossible
+
+---
+
+layout: true
+
+## Smart Constructors
+
+---
+
+```
+case class TastyRatio(
+  water: Water, 
+  grounds: Grounds)
+```
+
+???
+- What we want is to enforce an invariant on this type
+- But we don't want to be checking for it all over the place
+- Ideally, whenever you have an instance of `TastyRatio` it will be correct
+- Anything else should be impossible
+- Unlike that invariant that we had with `CoffeeOrder`
+- Which was "Irish coffee must have cream and whiskey"
+- This invariant is more tricky, and we can't easily write an algebraic data type to enforce it
+- So instead, we are going to use smart constructors to enforce the invariant we need
+
+---
+
+```
+case class private TastyRatio(
+  water: Water, 
+  grounds: Grounds)
+```
+
+???
+- The first step is to make it impossible to just build an instance of `TastyRatio` with arbitrary values
+- For that we hide away the default constructor and mark it `private`
+- And instead define our own "smart" constructor
+
+--
+
+```
+def make(
+  water: Water, 
+  grounds: Grounds): Option[TastyRatio] {{content}}
+```
+
+???
+- The contract here is that we can call `make` with whatever inputs we want
+- But the result will only be present if the those values actually represent the correct ratio
+
+--
+= 
+
+  if (water.amount / grounds.amount).within(14, 15)
+  then Some(TastyRatio(water, grounds))
+  else None
+
+???
+- The smart constructor is doing all the validations that we need
+- In this case checking that the ratio is in the correct range
+- And only then builds an instance of `TastyRatio`
+- This is the **only** way to create `TastyRatio` instances
+- It's crucial that we get this code here right
+- As this is our "safe kernel"
+- Users are going to rely on the invariant being enforced from this point on
+- But if we did get this function right
+--
+
+```
+def pour(tastyRatio: TastyRatio): IO[Unit]
+```
+
+???
+- Then this signature is now correct
+- It's impossible to call it with an invalid value
+- Because it's no longer possible to create invalid values of `TastyRatio`
+- We just pushed the burden of proof of correctness on the callers of the `pour` function
+- As the implementer of the `pour` function I no longer have to worry about illegal values
+- If I have an instance of `TastyRatio` it cannot be illegal
+- Although the "size" of `TastyRatio` is still too big
+- The smart-constructor makes it impossible to access the illegal parts of the state
+- So we can safely pretend that our state space really did get smaller
+- And that only legal states are now possible
+- More generally, with smart constructors we can enforce diverse invariants
+- For example
+
+---
+
+```
+// clientAge must be >= 18
+def prepareIrishCoffee(clientAge: Age)
+{{content}}
+```
+
+???
+- This signature would allow us to illegally pour alcohol
+
+--
+def prepareIrishCoffee(clientAge: AgeOver18)
+
+???
+- But with the appropriate smart-constructor we can make it impossible
+- Notice also how this makes our type-signatures signal our intent more clearly
+- That's a nice bonus
+- And much better than comments, as this is compiler-enforced and never goes out-of-date
+- We can keep at it with other use-cases as well
+
+--
+```
+// cups assumed non-empty
+def serveCoffee(cups: List[Cup])
+def serveCoffee(cups: NonEmptyList[Cup])
+```
+
+```
+// orders are sorted by priority
+def handle(sortedOrders: List[CoffeeOrder])
+def handle(sortedOrders: SortedByPriority[CoffeeOrder])
+```
+
+???
+- The original signatures are just wishful thinking 
+- We have to comment about it and hope for the best
+- If our hopes are not met, we'll enter some illegal state, and probably make an error
+- The signatures below are typed in a way that enforce the invariants that we need
+- And make it impossible to invoke the functions with the wrong inputs
+- But for all of this to work out, it's critical that we get the smart-constructors right
+- It's a one-time effort that will pay for itself all across all our program's flows
+
+---
+
+- Enforce diverse invariants
+- With compiler assistance
+
+???
+- Smart constructors let us enforce various, possibly complex invariants in our code
+- Once we attach some invariant to a type, the compiler will help us keep track of it
+- So we don't have to worry about the invariant being broken and our system entering an illegal state because of it
+- As a bonus, our type-signatures are becoming self-documenting
+
+--
+
+- With care
+- When possible, prefer ADTs
+
+???
+- Unlike algebraic data types, smart constructors are usually not correct by construction
+- So we need to be careful when implementing them and test them thoroughly to make sure that they never break the desired invariant
+- It's not that bad, since usually the surface area of a smart constructor is small compared to the rest of your application
+- After worrying about it once, we can stop worrying about the rest of the code
+- There are also libraries that can help with that
+- But when possible, algebraic data types are usually a better alternative
+- When they work though, smart-constructor are a great tool for excluding illegal states from our system
+
+---
+
+layout: false
+
+## What Could Possibly Go Wrong?
+
+.coffeeRobot[![](coffee-robot.jpg)]
+
+.imageCredit[Image from [OrionStar](https://en.orionstar.com/coffeemaster.html)]
+
+???
+- Let's tackle one last problem with our robot
+- Brewing coffee, is, no surprise here, a complicated and nuanced process
+- We can try to model some of it
+
+---
+
+layout: true
+
+## Brewing Prep
+
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[Unit]
+  
+  def heatWater: IO[Unit]
+  
+  def foldFilter: IO[Unit]
+  
+  def placeFilter: IO[Unit]
+  
+  def rinseFilter: IO[Unit]
+  
+  def addGrounds: IO[Unit]
+```
+
+???
+- Here's one way
+- This is the sort of imperative interface that you might have for operating the robot
+- We have a bunch of "low level" commands that can be used for the brewing stage
+- Assuming that someone implemented this interface
+- We can write code to do the first steps of brewing
+
+---
+
+```
+def brewingPrep(brewer: BrewingActions): IO[Unit] =
+
+  for
+    _ <- brewer.heatWater
+    _ <- brewer.grindCoffee
+    _ <- brewer.foldFilter
+    _ <- brewer.placeFilter
+    _ <- brewer.addGrounds
+  yield ()
+```
+
+???
+- That looks pretty informative
+- We are just running through the steps one by one
+- See the bug here?
+---
+
+```
+def brewingPrep(brewer: BrewingActions): IO[Unit] =
+
+  for
+    _ <- brewer.heatWater
+    _ <- brewer.grindCoffee
+    _ <- brewer.foldFilter
+    _ <- brewer.placeFilter
+    _ <- brewer.rinseFilter
+    _ <- brewer.addGrounds
+  yield ()
+```
+
+???
+- Disgusting!
+- We forgot to rinse the filter
+- Our clients are not going to be happy to drink coffee that tastes like paper
+- The reputation of our robot depends on it, and that's how you lose customers
+- More seriously though, this code is open to a large number of potential bugs
+- Illegal states, that is
+- You can forget actions
+- You can mix up their order
+- And nothing stops you from doing that
+- Any of these illegal states is easily representable and will compile just fine
+---
+
+.brewingPrepStates[![](states-brewing prep states 1.drawio.svg)]
+
+???
+- This is our desired state space
+
+---
+
+.brewingPrepStates[![](states-brewing prep states 2.drawio.svg)]
+
+???
+- And again, there are lots of illegal states
+- Or in this case, state transitions
+- But our code doesn't prevent us from reaching them
+- We can improve though
+
+---
+
+layout: true
+
+## Be Declarative
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[Unit]
+  
+  def heatWater: IO[Unit]
+  
+  def foldFilter: IO[Unit]
+  
+  def placeFilter: IO[Unit]
+  
+  def rinseFilter: IO[Unit]
+  
+  def addGrounds: IO[Unit]
+```
+
+???
+- A big part of the issue is this imperative interface we have here
+- It contains very little information about the intent and consequence of each action
+- `Unit` doesn't tell us or the compiler much about what's going on
+- Since so little is reflected in the types here, it's no wonder the compiler can't help us
+- The solution to this is to be more declarative
+
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[CoffeeGround]
+  
+  def heatWater: IO[WaterHeated]
+  
+  def foldFilter: IO[FilterFolded]
+  
+  def placeFilter: IO[FilterPlaced]
+  
+  def rinseFilter: IO[FilterRinsed]
+  
+  def addGrounds: IO[GroundsAdded]
+```
+
+???
+- Now we are declaring what we aim to achieve with each action
+- For example, if we invoked `placeFilter`, we now have a result that states that the filter was placed
+- And so on for all functions
+- But we are not done yet
+- The different actions have various prerequisites 
+- You can't place the filter if it's not folded yet
+- We can declare that as well
+
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[CoffeeGround]
+  
+  def heatWater: IO[WaterHeated]
+  
+  def foldFilter: IO[FilterFolded]
+  
+  def placeFilter(
+    filterFolded: FilterFolded): IO[FilterPlaced]
+  
+  def rinseFilter: IO[FilterRinsed]
+  
+  def addGrounds: IO[GroundsAdded]
+```
+
+???
+- To rinse a filter we must have the filter placed, but we must also have hot water
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[CoffeeGround]
+  
+  def heatWater: IO[WaterHeated]
+  
+  def foldFilter: IO[FilterFolded]
+  
+  def placeFilter(
+    filterFolded: FilterFolded): IO[FilterPlaced]
+  
+  def rinseFilter(
+    filterPlaced: FilterPlaced,
+    waterHeated: WaterHeated): IO[FilterRinsed]
+  
+  def addGrounds: IO[GroundsAdded]
+```
+
+???
+- And to add grounds the coffee must first be ground, and the filter must be rinsed
+
+---
+
+```
+trait BrewingActions:
+  def grindCoffee: IO[CoffeeGround]
+  
+  def heatWater: IO[WaterHeated]
+  
+  def foldFilter: IO[FilterFolded]
+  
+  def placeFilter(
+    filterFolded: FilterFolded): IO[FilterPlaced]
+  
+  def rinseFilter(
+    filterPlaced: FilterPlaced,
+    waterHeated: WaterHeated): IO[FilterRinsed]
+  
+  def addGrounds(
+    coffeeGround: CoffeeGround,
+    filterRinsed: FilterRinsed): IO[GroundsAdded]
+```
+
+???
+- Look how much information our type-signatures now contain
+- We are encoding our "business rules" directly into our types
+- In turn, that would mean that code that violates these rules won't even compile
+- It becomes unpresentable
+- Now we can implement the prep flow again
+
+---
+
+```
+def brewingPrep(
+  brewer: BrewingActions): IO[(WaterHeated, 
+                               GroundsAdded)]
+```
+
+???
+- Instead of having a meaningless `Unit` return type
+- We actually state what we achieved during the prep phase
+- By the time the prep is completed the water must be heated and the grounds added
+- There's no avoiding that now
+- And since our types and functions are more explicit now
+- We gain the benefit of being able to just follow the types to implement our code
+
+---
+
+```
+def brewingPrep(
+  brewer: BrewingActions): IO[(WaterHeated, 
+                               GroundsAdded)] =
+  for
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter
+    groundsAdded <- brewer.addGrounds
+  yield (waterHeated, groundsAdded)                             
+```
+
+  
+
+???
+- This is similar to the code we had before
+- But now we have to pass around outputs from our actions
+- The code is incomplete
+
+--
+```plaintext
+Error compiling project
+[error]     filterPlaced <- brewer.placeFilter
+[error]                     ^^^^^^^^^^^^^^^^^^
+```
+
+???
+- But the compiler can help us fill in the blanks with useful error messages, like this one
+- We can't place the filter unless it's folded
+
+---
+
+```
+def brewingPrep(
+  brewer: BrewingActions): IO[(WaterHeated, 
+                               GroundsAdded)] =
+
+  for                             
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    groundsAdded <- brewer.addGrounds
+  yield (waterHeated, groundsAdded)
+```
+
+???
+- Fixed
+
+--
+```plaintext
+Error compiling project
+[error]     groundsAdded <- brewer.addGrounds
+[error]                     ^^^^^^^^^^^^^^^^^
+```
+
+???
+- We can't add the grounds unless the coffee is ground and the filter is in place
+---
+
+```
+def brewingPrep(
+  brewer: BrewingActions): IO[(WaterHeated, 
+                               GroundsAdded)] =
+
+  for                             
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    groundsAdded <- brewer.addGrounds(
+                      coffeeGround, filterPlaced)
+  yield (waterHeated, groundsAdded)
+```
+
+???
+- Fixed
+- But now we still have the same bug we had before
+- The filter is not rinsed
+- Unlike last time though
+
+--
+```plaintext
+Error compiling project
+[error] Required: FilterRinsed
+[error] coffeeGround, filterPlaced)
+[error]               ^^^^^^^^^^^^
+```
+
+???
+- The compiler won't let us do it
+- It now clearly states to us that we need to rinse the filter
+
+---
+
+```
+def brewingPrep(
+  brewer: BrewingActions): IO[(WaterHeated, 
+                               GroundsAdded)] =
+
+  for
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    filterRinsed <- brewer.rinseFilter(
+                     filterPlaced, waterHeated)
+    groundsAdded <- brewer.addGrounds(
+                      coffeeGround, filterRinsed)
+  yield (waterHeated, groundsAdded)
+```
+
+???
+- Now everything is correct and the compiler is happy
+- Because we shared our business rules with the compiler, the compiler was happy to help us
+- Notice also how by being declarative we are being very explicit about how the data flows
+- We can easily see what step depends on what
+- The function arguments define our dependencies
+- This opens up opportunities for parallelization
+- And if we parallelize something illegally, the compiler will let us know
+
+- There's something I didn't specify though
+- What are these types we are using `WaterHeated`, `GroundsAdded`, etc.?
+- I just assumed they are there, but I didn't define them
+- The answer is: I don't care
+
+---
+layout: true
+
+## Be Parametric
+---
+
+```
+def brewingPrep[
+  CoffeeGround, WaterHeated, FilterFolded,
+  FilterPlaced, FilterRinsed, GroundsAdded]
+  
+  (brewer: BrewingActions): IO[(WaterHeated, 
+                                GroundsAdded)] =
+
+  for
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    filterRinsed <- brewer.rinseFilter(
+                     filterPlaced, waterHeated)
+    groundsAdded <- brewer.addGrounds(
+                      coffeeGround, filterPlaced)
+  yield (waterHeated, groundsAdded)
+```
+
+???
+- The implementation of the `brewingPrep` really doesn't care about the specifics of these types
+- We are only passing those values around without inspecting them in any way
+- `CoffeeGround` and the others can be whatever the user of the function is going to choose
+- `brewingPrep` will work happily with whatever they are
+- We declare this explicitly by being parametric here
+- For this to work out, that would mean that `BrewingActions` is also parameterized by the same types
+- Unfortunately, since this is a bit long, and slide space is limited
+- I'm going to abbreviate
+---
+
+```
+def brewingPrep[CG, WH, FF, FP, FR, GA]
+  (brewer: BrewingActions) =
+
+  for
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    filterRinsed <- brewer.rinseFilter(
+                     filterPlaced, waterHeated)
+    groundsAdded <- brewer.addGrounds(
+                      coffeeGround, filterPlaced)
+  yield (waterHeated, groundsAdded)
+```
+
+---
+
+```
+def brewingPrep[CG, WH, FF, FP, FR, GA]
+  (brewer: BrewingActions[CG, WH, FF, FP, FR, GA]) =
+
+  for
+    waterHeated  <- brewer.heatWater
+    coffeeGround <- brewer.grindCoffee
+    filterFolded <- brewer.foldFilter
+    filterPlaced <- brewer.placeFilter(filterFolded)
+    filterRinsed <- brewer.rinseFilter(
+                     filterPlaced, waterHeated)
+    groundsAdded <- brewer.addGrounds(
+                      coffeeGround, filterPlaced)
+  yield (waterHeated, groundsAdded)
+```
+
+???
+- Now `BrewingActions` takes type-parameters as well, the same ones that `brewingPrep` takes
+- So everything is consistent
+- Whatever `BrewingActions` returns, `brewingPrep` will use and pass along
+- So why would you do this instead of using regular types?
+- The benefit of being parametric is that it limits the possible implementations that we can write
+- If we want a value of `WaterHeated`, how can we obtain it?
+- Since we don't even know what the actual type really is, the only way of obtaining
+ values of `WaterHeated` is by calling `heatWater`
+- We are left with no other choices
+- And so we are forced to do the right thing, without a way to cheat and reach an illegal state
+- Basically, being parametric is yet another way of limiting our state space
+- An added bonus is that despite being constraining on the implementation of this function, type parameters actually give us more flexibility when implementing `BrewingActions`
+- In the actual implementation of `BrewingActions` we can still use `Unit` as the choice for all the type parameters
+- And in tests we might use something more informative, so that we can write assertion about that
+- The point is that `brewingPrep` doesn't care about all that and is only limited to doing the right thing
+- It should be noted that this doesn't prevent all illegal states completely
+- For example, nothing prevents us from calling `foldFilter` twice, which might be illegal
+- Unfortunately, it's not always easy or even possible to enforce every invariant within our type-system
+- But better enforce something rather than nothing
+
+---
+
+layout: false
+
+## Be Declarative + Parametric
+
+- Declare your rules in type signatures
+- Beware of meaningless (`Unit`) signatures
+
+???
+- Being declarative helps us encode our business rules directly in our types
+- That way the compiler will enforce those rules for us
+- Making it impossible to express violations of the rules we encoded
+- A good first step in that direction is to avoid uniformative `Unit` signatures
+
+--
+- Ignorance is strength
+
+???
+- And by being parametric we are becoming ignorant of the actual types that we use
+- Which limits the number of things that the code can do and the number of illegal states we can reach
+- **The less the code can do, the more we know about what it actually does**
+- Ignorance is truly a strength
+
+---
+
+layout: false
+class: middle, transition
+
+> The thing I love about ML-style types is that they make programming and reading other people's code pervasively easier.  
+
+> There's just a whole class of errors that you can stop worrying about because they can't happen.  
+
+> Every individual example you point to seems trivial; but the aggregate effect is huge.
+
+.footnote[Yaron Minsky, [Lambda the Ultimate](http://lambda-the-ultimate.org/node/2216#comment-31776)]
+
+???
+- So we've seen a number of techniques that enable us to make illegal states unrepresentable
+- From these small examples it might be difficult to see why it might be worth it
+- Since it's difficult to illustrate the effect of applying these techniques to large codebases with long-lived code
+- In this section I'll list some of the benefits that you can expect from using these tools
+
+---
+
+layout: true
+
+## What's in it for you 
+
+---
+
+Easier-to-comprehend code
+
+???
+- When we start proactively reducing the state space of our code it becomes easier to understand what it does
+- As I just mentioned
+- The fewer things the code can do, the easier it is to know what it actually does
+- But more concretely
+
+--
+
+```
+def prepareCoffeeOrder(order: CoffeeOrder) = 
+  order match 
+    case Cappuccino(milk) => ???
+    case Espresso => ???
+    case IrishCoffee(cream, whiskey) => ???
+    case ... => ...
+```
+
+???
+- If you use algebraic data types it becomes easy to ask the compiler about what's going on
+- Some editors can even automatically write the pattern match for you
+- With all the cases in front of you and all the available data right there with them
+- It's much easier to figure out what's going on
+
+--
+
+```
+def prepareIrishCoffee(
+  age: AgeOver18): IO[IrishCoffeeReady]
+```
+
+???
+- And a common theme in the examples is that type-signatures are becoming more descriptive and precise
+- Just by reading those signatures you can have a good sense of what's going on
+- And also what things are allowed or forbidden here
+
+---
+Fewer bugs
+
+???
+- Every illegal state that we made unrepresentable is a potential bug we avoided
+--
+```
+IrishCoffee(cream, whiskey = None)
+```
+
+???
+- Code like this, without the whiskey, won't even compile
+
+--
+
+```
+serveCoffee(cups = List.empty)
+```
+
+???
+- Nor this
+- And it's not just that the bugs are prevented, it's that you don't have think about it any more
+- You write down the type once, and a whole class of bugs just disappears without you needing to worry about it afterwards
+- These bugs are no longer representable in the code
+
+---
+Fewer tests
+
+???
+- Every illegal state that we made unrepresentable is a possible test we don't need and can't even write
+--
+
+```
+val irishCoffee = orderIrishCoffee(...)
+
+assert(irishCoffee.whiskey.nonEmpty)
+```
+
+???
+- A test like this, that checks whether the whiskey is present, is not only redundant now
+- But it actually can't compile
+- You're also future-proofed against code that is not yet written
+- You'll never need to test for the condition that the whiskey is missing
+- That illegal condition is unrepresentable
+--
+
+```
+val prepResult = brewingPrep(...)
+
+assert(checkWaterWasHeated())
+```
+
+???
+- A test like this although you can write it, the need for it is much reduced
+- Since the signature of `brewingPrep` already tells you that water was heated
+- And there's no way to implement it without heating water
+- It's required by the types
+
+---
+Safer refactoring
+
+???
+- Your code becomes much safer to refactor
+
+--
+
+```
+if order.drinkType == IrishCoffee then 
+  prepareIrishCoffee(
+    order.cream.get,
+    order.whiskey.get)
+```
+
+???
+- This code is very brittle
+- The `.get` calls here are only (somewhat) safe when they are under this `if` statement
+- But what happens if during some refactor we move the call to `prepareIrishCoffee` to another place?
+- The code will still compile, but now it will be exposed to even more bugs
+- On the other hand
+
+--
+
+```
+order match 
+  case IrishCoffee(cream, whiskey) =>
+    prepareIrishCoffee(cream, whiskey)
+```
+
+???
+- If you encode your legal states more completely
+- This code is both safe and resilient to refactoring
+- If you try to move the call to `prepareIrishCoffee` to another place, the code will just fail to compile
+- And if you add another drink type to your robot, the compiler's exhaustivity checking will warn you that you need to handle that as well
+- Another example of refactoring
+
+---
+Safer refactoring
+
+```
+for
+  waterHeated  <- brewer.heatWater
+  coffeeGround <- brewer.grindCoffee
+  filterFolded <- brewer.foldFilter
+  filterPlaced <- brewer.placeFilter(filterFolded)
+  filterRinsed <- brewer.rinseFilter(
+                   filterPlaced, waterHeated)
+  groundsAdded <- brewer.addGrounds(
+                    coffeeGround, filterPlaced)
+yield (waterHeated, groundsAdded)
+```
+
+???
+- As I mentioned before, there are opportunities for concurrency here
+- Which is an easy refactoring to get wrong
+
+---
+Safer refactoring
+
+```
+for
+  (waterHeated, 
+   coffeeGround,
+   filterFolded) <- concurrently(
+                      brewer.heatWater,
+                      brewer.grindCoffee,
+                      brewer.foldFilter)
+  filterFolded   <- brewer.foldFilter
+  filterPlaced   <- brewer.placeFilter(filterFolded)
+  filterRinsed   <- brewer.rinseFilter(
+                   filterPlaced, waterHeated)
+  groundsAdded   <- brewer.addGrounds(
+                      coffeeGround, filterPlaced)
+yield (waterHeated, groundsAdded)
+```
+
+???
+- But with declarative types, this becomes much safer
+- The types won't let you parallelize code that shouldn't run in parallel
+- As people who work and maintain large code bases, these benefits are definitely worth the investment of making illegal states unrepresentable
+
+---
+
+layout: false
+
+## Conclusion
+
+???
+- So, to conclude
+--
+
+- Think about your state space
+
+???
+
+- Whenever you tackle a new domain
+- Think about your state space
+
+--
+
+- Find the legal states
+
+???
+- Figure out what states are legal for your program and requirements
+
+--
+
+- All other states are illegal
+
+???
+- All other states that you have are illegal and should be avoided
+- Even if you don't do anything else
+- Only thinking about the legal and illegal states can help you design and write better code
+
+--
+
+- Make them unrepresentable
+
+???
+- But you'll reap the most benefits (fewer bugs, fewer tests, easier to comprehend code) if you make those illegal states unrepresentable
+- Completely impossible to even write down
+- We saw a number of techniques to get you closer to this ideal
+
+--
+
+  - Algebraic data types
+  - Smart constructors
+  - Declarative signatures
+  - Parametric polymorphism
+
+???
+- Algebraic data types to help narrow down the state space to only the legal combinations of values
+- Smart constructors to enforce diverse invariants that are not always expressible with plain algebraic data types
+- Declarative signatures to make your business rules explicit and enforceable at compile-time
+- Parametric polymorphism to further narrow down the space of possible implementations you can write
+- Of course, this is just a sample of tools and techniques that you can use
+- Ones that I find the most useful and widely applicable
+- With a reasonable tradeoff between usefulness and complexity
+ 
+---
+layout: true
+
+## Where to Next?
+
+---
+
+- Embedded domain specific languages
+- Type-level programming
+- More advanced types
+
+???
+
+- There are of course other techniques that you can use to exclude illegal states from your programs
+- But usually their cost is much heavier than simple things like algebraic data types
+- With domain specific languages you can create languages that are "smaller" than a full programming language
+- So you can express less with them, which makes it easier to exclude illegal states
+- We used very simple types for our examples, but sometimes your business rules might be more complex than what you can easily express with simple types
+- Type-level programming can help fill that gap, often at a heavy price
+- A common theme throughout our examples is that our types are becoming more descriptive
+- But we are limited at what we can describe by the type-system of the language
+- Using more descriptive type systems can expand the sort of invariants we can enforce
+--
+  - [Phantom](http://dcapwell.github.io/scala-tour/Phantom%20Type.html)
+  - [Refinement](https://en.wikipedia.org/wiki/Refinement_type)
+  - [Linear](https://en.wikipedia.org/wiki/Substructural_type_system#Linear_type_systems)
+  - [Dependent](https://en.wikipedia.org/wiki/Dependent_type)
+  - [Session](https://en.wikipedia.org/wiki/Session_type)
+
+???
+- These are some type systems that can help with that
+- But overall, I do find that the techniques I outlined in this talk are the easiest to get started with
+- And yield a lot of benefits
+- If you want some further inspiration
+
+  
+---
+layout: false
+
+## Inspiration
+
+  - [Effective ML — Yaron Minsky](https://blog.janestreet.com/effective-ml-video/)
+  - [Type Safety Back and Forth —  Matt Parsons](https://www.parsonsmatt.org/2017/10/11/type_safety_back_and_forth.html)
+  - [Parse, don’t validate — Alexis King](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/)
+  - ["Functional Programming" Recipes — Li Haoyi](https://www.lihaoyi.com/post/WhatsFunctionalProgrammingAllAbout.html#functional-programming-recipes)
+  - [Ghosts of Departed Proofs — Matt Noonan](https://kataskeue.com/gdp.pdf)
+  - [The Algebra of Algebraic Data Types — Chris Taylor](https://web.archive.org/web/20140222124650/http://chris-taylor.github.io/blog/2013/02/10/the-algebra-of-algebraic-data-types/)
+  - [The `refined` library](https://github.com/fthomas/refined)
+
+???
+- These are some further directions you can look at
+- I'll post the link to the presentation so that you can actually see the references
+- Let's wrap up then
+
+---
+
+layout: true
+
+## Epilogue
+
+---
+
+Somewhere, someone is trying to introduce a bug...
+
+???
+- Remember our registered user from the beginning of the talk
+- Someone, is yet again trying to introduce a bug
+--
+
+```
+User.Registered(
+  id = ID(123), 
+  email = None)
+```
+
+???
+- Luckily, we applied the techniques I talked about today
+
+--
+
+```text
+Error compiling project
+[error] Found: Option[Email]
+[error] Required: Email
+[error]   email = None)
+[error]           ^^^^^
+```
+
+???
+- And the compiler tells us that the bug is no longer representable
+- And you can sleep quietly tonight
+
+---
+layout: false
+class: middle, transition
+
+> The whole aim of Newspeak is to narrow the range of thought.  
+
+> In the end we shall make thoughtcrime literally impossible, because there will be no words in which to express it.
+
+.endQuote.footnote[George Orwell, 1984]
+
+???
+- Hopefully, I've managed to convince you that making illegal states unrepresentable is a worthy effort
+
+--
+
+.githubLink.centered[
+https://github.com/ncreep/illegal-states
+]
+
+.questions.centered[Questions?]
+
+???
+- You can find the full presentation and sample code here
+- Thank you
+
+
+</textarea>
+<script	src="remark-0.14.0.min.js"></script>
+
+<!-- For Scala 3 highlighting support -->
+<link rel="stylesheet" href="highlight.11.5.1.magula.min.css">
+<script src="highlight.11.5.1.min.js"></script>
+<script src="highlight.11.5.1.scala.min.js"></script>
+
+<script>
+// overriding the built-in highlighter with the newer version
+remark.highlighter.engine = hljs;
+</script>
+
+<script type="text/javascript">
+  var slideshow = remark.create({
+	countIncrementalSlides: false,
+  // highlightLines: true,
+	highlightLanguage: 'scala',
+	highlightStyle: 'magula' // default, googlecode, magula, vs
+});
+</script>
+</body>
+</html>
