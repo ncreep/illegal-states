@@ -16,10 +16,8 @@ class: center, middle, transition, intro
 
 ???
 
-- Hi, so we're here to talk about this great quote by Yaron Minsky
-- Make illegal states unrepresentable
-- Although it sounds simple, its consequence are quite profound
-- But before we begin, let's start with a short story
+- Hi, my name is Daniel, and thanks for coming
+- Before we begin, let's start with a short story
 
 ---
 layout: true
@@ -114,9 +112,9 @@ layout: true
 
 > Make illegal states unrepresentable
 
-- What it means
-- How to achieve it
-- What's in it for you
+1. What it means
+1. How to achieve it
+1. What's in it for you
   
 ???
 
@@ -206,26 +204,6 @@ layout: true
 - Before we move on, just thinking about the state space of your program, and what states are legal or illegal, is a good first step towards writing better software
 - Even if you don't do anything else besides that
 - Let's zoom in a little bit
-
----
-.stateFunction1[![](states-state function 1.drawio.svg)]
-
-???
-- A typical program is usually moving between states all the time
-- Ideally, we are moving between legal states and everything is fine
-- But as I said before, it's just a matter of time until we hit a bad state
-
----
-.stateFunction2[![](states-state function 2.drawio.svg)]
-
-???
-- And when that happens, you're likely to just move to yet another illegal state
----
-.stateFunction3[![](states-state function 3.drawio.svg)]
-
-???
-- This is not good, this is something that should be avoided
-- Let's zoom in a little more 
 
 ---
 layout: true
@@ -539,7 +517,7 @@ enum DrinkType:
 .coffeeOrderStates[![](states-coffee order states 3.drawio.svg)]
 
 ???
-- This type we have now is "too big" for the problem we are solving
+- This type we have now is **"too big"** for the problem we are solving
 - It has too many values that shouldn't be part of our program
 - Let's see more concretely why this is a problem
 
@@ -605,7 +583,7 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 - Maybe you started reading orders from JSON files, and the format got messed up?
 - Who knows
 - You probably can't write tests for every possible flow in the system
-- And even less so for flows that will be defined sometime in the future
+- And even less so for flows that will be defined **sometime in the future**
 - If you're now thinking that I'm just bad at modelling data, sure
 - But these things don't just happen all at once
 - They start small, and they gradually sneak up on you, and then suddenly they are big
@@ -685,7 +663,7 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 
 ???
 - Now we can safely call `prepareIrishCoffee`
-- We do not need to assume any invariant about the code, or (lying) in a comment about it
+- **We do not need to assume any invariant about the code, or (lying) in a comment about it**
 - No exceptions or illegal states here
 - If we got to this point, we know for a fact that we have all the right ingredients for Irish coffee
 - This is enforced by the compiler for every possible flow of our program
@@ -694,14 +672,14 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 - The illegal state I showed previously is truly unrepresentable
 
 ---
-- Reducing your state space
+1. Reducing your state space
 
 ???
 - Algebraic data types are a great tool you can use to reduce the size of your state space
 - Leading to fewer illegal states that you can represent
 
 --
-- Making every assumption explicit
+1. Making every assumption explicit
 
 ???
 - This is done by making every assumption about your state explicit and encoded by the type
@@ -710,7 +688,7 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 - Once you do that
 
 --
-- Flow as data
+1. Flow as data
 
 ???
 - You're basically turning the flow of your code into a piece of data
@@ -724,7 +702,7 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 - You're free from thinking about the illegal states, or doing any kind of **defensive programming**
 
 --
-- You still have to get the "size" right
+1. You still have to get the "size" right
 
 ???
 - But it's not a magical solution
@@ -734,7 +712,7 @@ def prepareCoffeeOrder(order: CoffeeOrder): IO[Unit] =
 - That's why it allowed us to enter illegal states
 
 --
-- Probably the best cost/benefit ratio in FP
+1. Probably the best cost/benefit ratio in FP
 
 ???
 - Overall, I find that of all features of functional programming, algebraic data types probably have the best cost/benefit ratio
@@ -954,8 +932,8 @@ def handle(sortedOrders: SortedByPriority[CoffeeOrder])
 
 ---
 
-- Enforce diverse invariants
-- With compiler assistance
+1. Enforce diverse invariants
+1. With compiler assistance
 
 ???
 - Smart constructors let us enforce various, possibly complex invariants in our code
@@ -965,8 +943,8 @@ def handle(sortedOrders: SortedByPriority[CoffeeOrder])
 
 --
 
-- With care
-- When possible, prefer ADTs
+1. With care
+1. When possible, prefer ADTs
 
 ???
 - Unlike algebraic data types, smart constructors are usually not correct by construction
@@ -1137,6 +1115,7 @@ trait BrewingActions:
 - The different actions have various prerequisites 
 - You can't place the filter if it's not folded yet
 - We can declare that as well
+- To place a filter, you must have it folded first
 
 ---
 
@@ -1224,7 +1203,7 @@ def brewingPrep(
 - By the time the prep is completed the water must be heated and the grounds added
 - There's no avoiding that now
 - And since our types and functions are more explicit now
-- We gain the benefit of being able to just follow the types to implement our code
+- We gain the benefit of being able to just **follow the types** to implement our code
 
 ---
 
@@ -1453,8 +1432,8 @@ layout: false
 
 ## Be Declarative + Parametric
 
-- Declare your rules in type signatures
-- Beware of meaningless (`Unit`) signatures
+1. Declare your rules in type signatures
+1. Beware of meaningless (`Unit`) signatures
 
 ???
 - Being declarative helps us encode our business rules directly in our types
@@ -1463,7 +1442,7 @@ layout: false
 - A good first step in that direction is to avoid uniformative `Unit` signatures
 
 --
-- Ignorance is strength
+1. Ignorance is strength
 
 ???
 - And by being parametric we are becoming ignorant of the actual types that we use
@@ -1576,7 +1555,7 @@ assert(irishCoffee.whiskey.nonEmpty)
 ???
 - A test like this, that checks whether the whiskey is present, is not only redundant now
 - But it actually can't compile
-- You're also future-proofed against code that is not yet written
+- You're also **future-proofed against code that is not yet written**
 - You'll never need to test for the condition that the whiskey is missing
 - That illegal condition is unrepresentable
 --
@@ -1677,15 +1656,17 @@ yield (waterHeated, groundsAdded)
 
 ---
 
-layout: false
+layout: true
 
 ## Conclusion
+
+---
 
 ???
 - So, to conclude
 --
 
-- Think about your state space
+1. Think about your state space
 
 ???
 
@@ -1694,14 +1675,14 @@ layout: false
 
 --
 
-- Find the legal states
+1. Find the legal states
 
 ???
 - Figure out what states are legal for your program and requirements
 
 --
 
-- All other states are illegal
+1. All other states are illegal
 
 ???
 - All other states that you have are illegal and should be avoided
@@ -1710,19 +1691,22 @@ layout: false
 
 --
 
-- Make them unrepresentable
+1. Make them unrepresentable
 
 ???
 - But you'll reap the most benefits (fewer bugs, fewer tests, easier to comprehend code) if you make those illegal states unrepresentable
 - Completely impossible to even write down
 - We saw a number of techniques to get you closer to this ideal
 
---
+---
 
-  - Algebraic data types
-  - Smart constructors
-  - Declarative signatures
-  - Parametric polymorphism
+Make them unrepresentable
+
+1. Algebraic data types
+1. Smart constructors
+1. Declarative signatures
+1. Parametric polymorphism
+
 
 ???
 - Algebraic data types to help narrow down the state space to only the legal combinations of values

@@ -156,6 +156,14 @@ li {
   color: rgb(41, 44, 47);
 }
 
+ol {
+	margin: 0.2em 0em 0.2em 0.3em;
+	color: rgb(41, 44, 47);
+}
+ol li::marker {
+	font-weight: bold;
+}
+
 h1, h2, h3 {
 	font-family: arial, sans-serif;
 	font-weight: bold;
